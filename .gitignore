@@ -1,9 +1,12 @@
 __pycache__/
 *.pyc
 
+.airflowignore
+
 .env
 
 logs/
-data/
 
-.airflowignore
+.idea/
+
+.vscode/

@@ -1,10 +1,13 @@
 from airflow import DAG
 from airflow.operators.python import PythonOperator
+
 from datetime import datetime
 import requests
+import psycopg2
 
 
 def fetch_weather():
+
     url = (
         "https://api.open-meteo.com/v1/forecast"
         "?latitude=35.69"
@@ -15,50 +18,78 @@ def fetch_weather():
     response = requests.get(url)
     data = response.json()
 
-    print("Weather data received")
     return data
 
 
-def extract_temperature(ti):
-    weather = ti.xcom_pull(task_ids="fetch_weather")
+def transform_weather(ti):
 
-    print("XCOM DATA:")
-    print(weather)
+    weather = ti.xcom_pull(
+        task_ids="fetch_weather"
+    )
 
     temperature = weather["current"]["temperature_2m"]
 
     return temperature
 
 
-def save_temperature(ti):
-    temperature = ti.xcom_pull(task_ids="extract_temperature")
+def load_weather(ti):
 
-    with open("/tmp/temperature.txt", "w") as f:
-        f.write(str(temperature))
+    temperature = ti.xcom_pull(
+        task_ids="transform_weather"
+    )
 
-    print("Temperature saved")
+
+    conn = psycopg2.connect(
+        host="weather-postgres-1",
+        database="weather",
+        user="weather",
+        password="weather"
+    )
+
+    cursor = conn.cursor()
+
+
+    cursor.execute(
+        """
+        INSERT INTO weather_data (temperature)
+        VALUES (%s)
+        """,
+        (temperature,)
+    )
+
+
+    conn.commit()
+
+    cursor.close()
+    conn.close()
+
+    print("Inserted:", temperature)
+
 
 
 with DAG(
     dag_id="weather_pipeline",
-    start_date=datetime(2025, 1, 1),
+    start_date=datetime(2025,1,1),
     schedule=None,
-    catchup=False,
+    catchup=False
 ):
 
-    task1 = PythonOperator(
+    extract = PythonOperator(
         task_id="fetch_weather",
-        python_callable=fetch_weather,
+        python_callable=fetch_weather
     )
 
-    task2 = PythonOperator(
-        task_id="extract_temperature",
-        python_callable=extract_temperature,
+
+    transform = PythonOperator(
+        task_id="transform_weather",
+        python_callable=transform_weather
     )
 
-    task3 = PythonOperator(
-        task_id="save_temperature",
-        python_callable=save_temperature,
+
+    load = PythonOperator(
+        task_id="load_weather",
+        python_callable=load_weather
     )
 
-    task1 >> task2 >> task3
+
+    extract >> transform >> load
