@@ -1,228 +1,109 @@
-# Weather ETL Pipeline with Apache Airflow and PostgreSQL
+# Weather ETL Pipeline
 
-A simple ETL pipeline built using Apache Airflow, Docker, and PostgreSQL.
+## Overview
 
-The pipeline fetches real-time weather data from Open-Meteo API, transforms the required information, and stores it in PostgreSQL.
+This project is a simple ETL (Extract, Transform, Load) pipeline built with Apache Airflow, PostgreSQL, Docker, and Grafana.
 
----
+The pipeline performs the following steps:
 
-## Architecture
-
-```
-                 Open-Meteo API
-                       |
-                       |
-                       v
-              fetch_weather task
-                       |
-                       |
-                    XCom
-                       |
-                       |
-                       v
-            transform_weather task
-                       |
-                       |
-                       v
-              load_weather task
-                       |
-                       |
-                       v
-             PostgreSQL Database
-                  weather_data
-```
+1. Extract weather data from the Open-Meteo API
+2. Transform the response into a clean structure
+3. Validate the temperature value
+4. Load the data into PostgreSQL
+5. Visualize the stored data in Grafana
 
 ---
 
-# Technologies
+## Technologies
 
-- Apache Airflow 2.9.3
-- PostgreSQL 16
-- Docker
-- Docker Compose
-- Python
-- Open-Meteo Weather API
+* Apache Airflow 2.9.3
+* PostgreSQL 16
+* Grafana
+* Docker Compose
+* Python
 
 ---
 
-# Project Structure
+## Project Structure
 
-```
+```text
 weather/
 │
 ├── dags/
 │   └── weather_pipeline.py
 │
+├── sql/
+│   └── init.sql
+│
 ├── docker-compose.yml
-│
-├── README.md
-│
-└── .gitignore
+├── requirements.txt
+├── .env
+├── .gitignore
+└── README.md
 ```
 
 ---
 
-# ETL Process
+## Setup
 
-## 1. Extract
+### Clone repository
 
-The `fetch_weather` task requests current weather information from Open-Meteo API.
-
-Example response:
-
-```json
-{
-  "current": {
-    "temperature_2m": 26.5
-  }
-}
+```bash
+git clone <repository-url>
+cd weather
 ```
 
-The returned JSON is automatically stored in Airflow XCom.
+### Create .env file
 
----
-
-## 2. Transform
-
-The `transform_weather` task extracts only the required field:
-
-```
-temperature_2m
-```
-
-Example:
-
-Input:
-
-```json
-{
- "current":{
-    "temperature_2m":26.5
- }
-}
-```
-
-Output:
-
-```
-26.5
+```env
+POSTGRES_USER=weather
+POSTGRES_PASSWORD=weather
+POSTGRES_DB=weather
 ```
 
 ---
 
-## 3. Load
-
-The `load_weather` task inserts the transformed temperature into PostgreSQL.
-
-Database table:
-
-```sql
-CREATE TABLE weather_data (
-    id SERIAL PRIMARY KEY,
-    temperature NUMERIC,
-    created_at TIMESTAMP DEFAULT NOW()
-);
-```
-
-Example data:
-
-```
- id | temperature | created_at
-----+-------------+---------------------
- 1  | 26.8        | 2026-07-07 21:21:35
- 2  | 26.5        | 2026-07-07 21:31:36
-```
-
----
-
-# Running the Project
-
-## 1. Start containers
+## Start Services
 
 ```bash
 docker compose up -d
 ```
 
-Check running containers:
+Check containers:
 
 ```bash
 docker ps
 ```
 
-Expected:
+Expected services:
 
-```
-weather-airflow-1
-weather-postgres-1
-```
-
----
-
-# Airflow
-
-Open:
-
-```
-http://localhost:8080
-```
-
-Login:
-
-```
-username:
-admin
-
-password:
-YOUR_PASSWORD
-```
+* Airflow
+* PostgreSQL
+* Grafana
 
 ---
 
-# Run DAG manually
+## PostgreSQL
 
-Enter Airflow container:
-
-```bash
-docker exec -it weather-airflow-1 bash
-```
-
-List DAGs:
-
-```bash
-airflow dags list
-```
-
-Run:
-
-```bash
-airflow dags test weather_pipeline 2025-01-01
-```
-
-Expected:
-
-```
-fetch_weather       SUCCESS
-transform_weather   SUCCESS
-load_weather       SUCCESS
-```
-
----
-
-# PostgreSQL
-
-Connect:
+Connect to database:
 
 ```bash
 docker exec -it weather-postgres-1 psql -U weather -d weather
 ```
 
-Check tables:
+Create table:
 
 ```sql
-\dt
+CREATE TABLE IF NOT EXISTS weather_data (
+    id SERIAL PRIMARY KEY,
+    city VARCHAR(100),
+    temperature NUMERIC,
+    weather_time TIMESTAMP,
+    created_at TIMESTAMP DEFAULT NOW()
+);
 ```
 
-Query data:
+Check data:
 
 ```sql
 SELECT * FROM weather_data;
@@ -230,128 +111,141 @@ SELECT * FROM weather_data;
 
 ---
 
-# Docker Configuration
+## Airflow
 
-PostgreSQL mapping:
+Open:
 
+```text
+http://localhost:8080
 ```
-Host Port: 5433
-Container Port: 5432
+
+Login with your Airflow credentials.
+
+List DAGs:
+
+```bash
+docker exec -it weather-airflow-1 bash
+
+airflow dags list
 ```
 
-Connection from host:
+Run DAG manually:
 
+```bash
+airflow dags test weather_pipeline 2025-01-01
 ```
+
+---
+
+## Grafana
+
+Open:
+
+```text
+http://localhost:3000
+```
+
+Default credentials:
+
+```text
+admin
+admin
+```
+
+### Add PostgreSQL datasource
+
 Host:
-localhost
 
-Port:
-5433
+```text
+postgres:5432
+```
 
 Database:
-weather
 
-Username:
+```text
 weather
+```
+
+User:
+
+```text
+weather
+```
 
 Password:
-weather
-```
 
-Connection from Airflow container:
-
-```
-Host:
-weather-postgres-1
-
-Port:
-5432
-
-Database:
-weather
-
-Username:
-weather
-
-Password:
+```text
 weather
 ```
 
 ---
 
-# Airflow XCom
+## Create Dashboard
 
-XCom is Airflow's mechanism for passing small amounts of data between tasks.
+Use query:
 
-Example:
-
-`fetch_weather` returns:
-
-```python
-return data
+```sql
+SELECT
+    weather_time AS time,
+    temperature
+FROM weather_data
+ORDER BY weather_time;
 ```
 
-Airflow automatically stores this result.
+Visualization:
 
-Another task retrieves it:
-
-```python
-weather = ti.xcom_pull(
-    task_ids="fetch_weather"
-)
-```
-
-In this project:
-
-```
-fetch_weather
-       |
-       |
-       v
-    XCom
-       |
-       |
-       v
-transform_weather
+```text
+Time Series
 ```
 
 ---
 
-# Useful Commands
+## ETL Flow
 
-Stop containers:
+### Extract
+
+Fetches weather data from Open-Meteo API.
+
+### Transform
+
+Extracts:
+
+* city
+* temperature
+* weather_time
+
+Validates temperature values.
+
+### Load
+
+Stores processed data inside PostgreSQL.
+
+---
+
+## Testing
+
+Run:
 
 ```bash
-docker compose down
+airflow dags test weather_pipeline 2025-01-01
 ```
 
-Restart:
+Verify:
 
-```bash
-docker compose restart
+```sql
+SELECT * FROM weather_data;
 ```
 
-View logs:
-
-```bash
-docker logs weather-airflow-1
-```
+You should see a new weather record inserted.
 
 ---
 
-# Future Improvements
+## Future Improvements
 
-Possible improvements:
-
-- Add Airflow scheduling
-- Add data validation checks
-- Add retries and failure handling
-- Store historical weather data
-- Add dashboard using Metabase
-- Add CI/CD with GitHub Actions
-
----
-
-# Author
-
-Weather ETL Pipeline Project
+* Add retry policies
+* Add logging
+* Store humidity and wind speed
+* Create Grafana dashboards
+* Add alerts
+* Deploy on cloud infrastructure
+* Add CI/CD with GitHub Actions

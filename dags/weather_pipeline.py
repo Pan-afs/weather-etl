@@ -59,21 +59,19 @@ def load_weather(ti):
     )
 
     hook.run(
-        """
-        INSERT INTO weather_data
-        (
-            city,
-            temperature,
-            weather_time
-        )
-        VALUES (%s, %s, %s)
-        """,
-        parameters=(
-            city,
-            temperature,
-            weather_time
-        )
+    """
+    INSERT INTO weather_data
+    (city, temperature, weather_time)
+    VALUES (%s, %s, %s)
+    ON CONFLICT (city, weather_time)
+    DO NOTHING
+    """,
+    parameters=(
+        city,
+        temperature,
+        weather_time
     )
+)
 
 
 default_args = {
@@ -86,7 +84,7 @@ with DAG(
     dag_id="weather_pipeline",
     default_args=default_args,
     start_date=datetime(2025, 1, 1),
-    schedule=None,
+    schedule="@hourly",
     catchup=False
 ):
 
